@@ -104,10 +104,25 @@ def scale_segmentation(
             seg_list = [item for sublist in anno["segmentation"] for item in sublist]
         elif "bbox" in anno:
             seg_list = anno["bbox"]
-        scaled_seg_data = (
-            np.array(seg_list).reshape(-1, 2) / [w, h]
-        ).tolist()  # make the list group in x, y pairs and scaled with image width, height
-        scaled_flat_seg_data = [category_id] + list(chain(*scaled_seg_data))  # flatten the scaled_seg_data list
+
+        # Temporary fix for bounding box coordinates
+        if len(seg_list) == 4:
+            scaled_seg_data = np.zeros((1, 4))
+            scaled_seg_data[0][0] = seg_list[0] / w
+            scaled_seg_data[0][1] = seg_list[1] / h
+            scaled_seg_data[0][2] = seg_list[2] / w
+            scaled_seg_data[0][3] = seg_list[3] / h
+
+            scaled_seg_data[0][2] = scaled_seg_data[0][2] + scaled_seg_data[0][0]
+            scaled_seg_data[0][3] = scaled_seg_data[0][3] + scaled_seg_data[0][1]
+            
+            scaled_flat_seg_data = [category_id] + list(chain(*scaled_seg_data))  # flatten the scaled_seg_data list
+        else:
+            scaled_seg_data = (
+                np.array(seg_list).reshape(-1, 2) / [w, h]
+            ).tolist()  # make the list group in x, y pairs and scaled with image width, height
+            scaled_flat_seg_data = [category_id] + list(chain(*scaled_seg_data))  # flatten the scaled_seg_data list
+        
         seg_array_with_cat.append(scaled_flat_seg_data)
 
     return seg_array_with_cat
