@@ -111,6 +111,7 @@ class InferenceConfig:
     task: str
     nms: NMSConfig
     data: DataConfig
+    eval_interval: int
     fast_inference: Optional[None]
     save_predict: bool
 

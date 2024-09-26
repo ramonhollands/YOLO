@@ -33,6 +33,26 @@ from yolo.utils.model_utils import (
 )
 from yolo.utils.solver_utils import calculate_ap
 
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+def visualize_data(dataloader, num_samples=5, save_path='data_visualization.png'):
+    batch_size, images, targets, rev_tensor, img_paths = next(iter(dataloader))
+    fig, axes = plt.subplots(1, num_samples, figsize=(15, 3))
+    for i in range(min(num_samples, len(images))):
+        ax = axes[i]
+        ax.imshow(images[i].permute(1, 2, 0).cpu().numpy())
+        for target in targets[i]:
+            x1, y1, x2, y2 = target[1:5]
+            # add rectangle
+            rect = Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, edgecolor='blue', lw=1)
+            ax.add_patch(rect)
+        # Set the title to the image path
+        ax.set_title(Path(img_paths[i]).name, fontsize=8)
+        ax.axis('off')  # Hide axes ticks
+    
+    plt.savefig(save_path)
+    plt.close(fig)
+
 
 class ModelTrainer:
     def __init__(self, cfg: Config, model: YOLO, vec2box: Vec2Box, progress: ProgressLogger, device, use_ddp: bool):
@@ -46,6 +66,7 @@ class ModelTrainer:
         self.loss_fn = create_loss_function(cfg, vec2box)
         self.progress = progress
         self.num_epochs = cfg.task.epoch
+        self.eval_interval = cfg.task.eval_interval
         self.mAPs_dict = defaultdict(list)
 
         self.weights_dir = self.progress.save_path / "weights"
@@ -58,6 +79,10 @@ class ModelTrainer:
         self.validation_dataloader = create_dataloader(
             cfg.task.validation.data, cfg.dataset, cfg.task.validation.task, use_ddp
         )
+
+        preview_path = self.weights_dir / ".." / "data_visualization.png"
+        visualize_data(self.validation_dataloader, save_path=str(preview_path))
+
         self.validator = ModelValidator(cfg.task.validation, cfg.dataset, model, vec2box, progress, device)
 
         if getattr(train_cfg.ema, "enabled", False):
@@ -86,7 +111,7 @@ class ModelTrainer:
 
     def train_one_epoch(self, dataloader):
         self.model.train()
-        total_loss = defaultdict(lambda: torch.tensor(0.0, device=self.device))
+        total_loss = defaultdict(float)
         total_samples = 0
         self.optimizer.next_epoch(len(dataloader))
         for batch_size, images, targets, *_ in dataloader:
@@ -95,7 +120,7 @@ class ModelTrainer:
 
             for loss_name, loss_val in loss_each.items():
                 if self.use_ddp:  # collecting loss for each batch
-                    distributed.all_reduce(loss_val, op=distributed.ReduceOp.AVG)
+                    distributed.all_reduce(loss_val.item(), op=distributed.ReduceOp.AVG)
                 total_loss[loss_name] += loss_val * batch_size
             total_samples += batch_size
             self.progress.one_batch(loss_each)
@@ -126,11 +151,11 @@ class ModelTrainer:
         torch.save(checkpoint, file_path)
 
     def good_epoch(self, mAPs: Dict[str, Tensor]) -> bool:
-        save_flag = True
+        save_flag = False
         for mAP_key, mAP_val in mAPs.items():
+            if not self.mAPs_dict[mAP_key] or mAP_val > max(self.mAPs_dict[mAP_key]):
+                save_flag = True
             self.mAPs_dict[mAP_key].append(mAP_val)
-            if mAP_val < max(self.mAPs_dict[mAP_key]):
-                save_flag = False
         return save_flag
 
     def solve(self, dataloader: DataLoader):
@@ -146,10 +171,13 @@ class ModelTrainer:
             epoch_loss = self.train_one_epoch(dataloader)
             self.progress.finish_one_epoch(epoch_loss, epoch_idx=epoch_idx)
 
-            mAPs = self.validator.solve(self.validation_dataloader, epoch_idx=epoch_idx)
-            if mAPs is not None and self.good_epoch(mAPs):
-                self.save_checkpoint(epoch_idx=epoch_idx)
-            # TODO: save model if result are better than before
+            if (epoch_idx + 1) % self.eval_interval == 0:
+                mAPs = self.validator.solve(self.validation_dataloader, epoch_idx=epoch_idx)
+                self.save_checkpoint(epoch_idx=epoch_idx, file_name="last.pt")
+                if mAPs is not None and self.good_epoch(mAPs):
+                    self.save_checkpoint(epoch_idx=epoch_idx+1, file_name="best.pt")
+
+
         self.progress.finish_train()
 
 
@@ -259,9 +287,16 @@ class ModelValidator:
             if self.progress.local_rank != 0:
                 return
             json.dump(predict_json, f)
-        if hasattr(self, "coco_gt"):
+
+    
+        if predict_json and hasattr(self, "coco_gt"):
             self.progress.start_pycocotools()
             result = calculate_ap(self.coco_gt, predict_json)
             self.progress.finish_pycocotools(result, epoch_idx)
+        else:
+            if not predict_json:
+                logger.warning("⚠️ No predictions available for evaluation.")
+            if not hasattr(self, "coco_gt"):
+                logger.warning("⚠️ COCO ground truth not found. Please check dataset configuration.")
 
         return avg_mAPs
