@@ -36,7 +36,8 @@ from yolo.utils.solver_utils import calculate_ap
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 def visualize_data(dataloader, num_samples=5, save_path='data_visualization.png'):
-    batch_size, images, targets, rev_tensor, img_paths = next(iter(dataloader))
+    
+    batch_size, images, targets, rev_tensor, image_ids = next(iter(dataloader))
     fig, axes = plt.subplots(1, num_samples, figsize=(15, 3))
     for i in range(min(num_samples, len(images))):
         ax = axes[i]
@@ -47,7 +48,7 @@ def visualize_data(dataloader, num_samples=5, save_path='data_visualization.png'
             rect = Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, edgecolor='blue', lw=1)
             ax.add_patch(rect)
         # Set the title to the image path
-        ax.set_title(Path(img_paths[i]).name, fontsize=8)
+        ax.set_title(image_ids[i], fontsize=8)
         ax.axis('off')  # Hide axes ticks
     
     plt.savefig(save_path)
@@ -265,7 +266,7 @@ class ModelValidator:
         self.model.eval()
         predict_json, mAPs = [], defaultdict(list)
         self.progress.start_one_epoch(len(dataloader), task="Validate")
-        for batch_size, images, targets, rev_tensor, img_paths in dataloader:
+        for batch_size, images, targets, rev_tensor, image_ids in dataloader:
             images, targets, rev_tensor = images.to(self.device), targets.to(self.device), rev_tensor.to(self.device)
             with torch.no_grad():
                 predicts = self.model(images)
@@ -278,7 +279,7 @@ class ModelValidator:
             avg_mAPs = {key: 100 * torch.mean(torch.stack(val)) for key, val in mAPs.items()}
             self.progress.one_batch(avg_mAPs)
 
-            predict_json.extend(predicts_to_json(img_paths, predicts, rev_tensor))
+            predict_json.extend(predicts_to_json(image_ids, predicts, rev_tensor))
         self.progress.finish_one_epoch(avg_mAPs, epoch_idx=epoch_idx)
         self.progress.visualize_image(images, targets, predicts, epoch_idx=epoch_idx)
 
