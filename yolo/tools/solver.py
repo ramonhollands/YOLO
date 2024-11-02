@@ -12,27 +12,6 @@ from yolo.tools.loss_functions import create_loss_function
 from yolo.utils.bounding_box_utils import create_converter, to_metrics_format
 from yolo.utils.model_utils import PostProcess, create_optimizer, create_scheduler
 
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
-def visualize_data(dataloader, num_samples=5, save_path='data_visualization.png'):
-
-    batch_size, images, targets, rev_tensor, image_ids = next(iter(dataloader))
-    fig, axes = plt.subplots(1, num_samples, figsize=(15, 3))
-    for i in range(min(num_samples, len(images))):
-        ax = axes[i]
-        ax.imshow(images[i].permute(1, 2, 0).cpu().numpy())
-        for target in targets[i]:
-            x1, y1, x2, y2 = target[1:5]
-            # add rectangle
-            rect = Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, edgecolor='blue', lw=1)
-            ax.add_patch(rect)
-        # Set the title to the image path
-        ax.set_title(image_ids[i], fontsize=8)
-        ax.axis('off')  # Hide axes ticks
-
-    plt.savefig(save_path)
-    plt.close(fig)
-
 
 class BaseModel(LightningModule):
     def __init__(self, cfg: Config):

@@ -72,30 +72,25 @@ class YoloDataset(Dataset):
         labels_path, data_type = locate_label_paths(dataset_path, phase_name)
         images_list = sorted([p.name for p in Path(images_path).iterdir() if p.is_file()])
         if data_type == "json":
-            (
-                annotations_dict,
-                image_info_dict,
-                image_name_to_id_dict
-            ) = create_image_metadata(labels_path)
+            annotations_index, image_info_dict = create_image_metadata(labels_path)
 
         data = []
         valid_inputs = 0
         for image_name in track(images_list, description="Filtering data"):
             if not image_name.lower().endswith((".jpg", ".jpeg", ".png")):
                 continue
+            image_id = Path(image_name).stem
 
             if data_type == "json":
-                image_id = image_name_to_id_dict[image_name]
                 image_info = image_info_dict.get(image_id, None)
                 if image_info is None:
                     continue
-                annotations = annotations_dict.get(image_id, [])
+                annotations = annotations_index.get(image_info["id"], [])
                 image_seg_annotations = scale_segmentation(annotations, image_info)
                 if not image_seg_annotations:
                     continue
 
             elif data_type == "txt":
-                image_id = Path(image_name).stem
                 label_path = labels_path / f"{image_id}.txt"
                 if not label_path.is_file():
                     continue
@@ -107,19 +102,17 @@ class YoloDataset(Dataset):
             labels = self.load_valid_labels(image_id, image_seg_annotations)
 
             img_path = images_path / image_name
-            data.append((image_id, img_path, labels))
+            data.append((img_path, labels))
             valid_inputs += 1
         logger.info(f"Recorded {valid_inputs}/{len(images_list)} valid inputs")
         return data
 
-    def load_valid_labels(self, image_id: str, seg_data_one_img: list) -> Union[Tensor, None]:
+    def load_valid_labels(self, label_path: str, seg_data_one_img: list) -> Union[Tensor, None]:
         """
         Loads and validates bounding box data is [0, 1] from a label file.
 
         Parameters:
-            image_id (int | str): Image id.
-            If COCO .json file is used, image id is a `int`.
-            If YOLO .txt file is used, image id is a string.
+            label_path (str): The filepath to the label file containing bounding box data.
 
         Returns:
             Tensor or None: A tensor of all valid bounding boxes if any are found; otherwise, None.
@@ -128,22 +121,15 @@ class YoloDataset(Dataset):
         for seg_data in seg_data_one_img:
             cls = seg_data[0]
             points = np.array(seg_data[1:]).reshape(-1, 2)
-
-            # Temporary fix for coco style bounding box formats
-            if points.size == 4:
-                points = seg_data[1:]
-                bbox = torch.tensor([cls, points[0], points[1], points[2], points[3]])
+            valid_points = points[(points >= 0) & (points <= 1)].reshape(-1, 2)
+            if valid_points.size > 1:
+                bbox = torch.tensor([cls, *valid_points.min(axis=0), *valid_points.max(axis=0)])
                 bboxes.append(bbox)
-            else:
-                valid_points = points[(points >= 0) & (points <= 1)].reshape(-1, 2)
-                if valid_points.size > 1:
-                    bbox = torch.tensor([cls, *valid_points.min(axis=0), *valid_points.max(axis=0)])
-                    bboxes.append(bbox)
 
         if bboxes:
             return torch.stack(bboxes)
         else:
-            logger.warning("No valid BBox in image id:{}", image_id)
+            logger.warning("No valid BBox in {}", label_path)
             return torch.zeros((0, 5))
 
     def get_data(self, idx):
@@ -158,8 +144,10 @@ class YoloDataset(Dataset):
         return [self.get_data(idx)[:2] for idx in indices]
 
     def __getitem__(self, idx) -> Tuple[Image.Image, Tensor, Tensor, List[str]]:
-        img, bboxes, image_id = self.get_data(idx)
+        img, bboxes, img_path = self.get_data(idx)
         img, bboxes, rev_tensor = self.transform(img, bboxes)
+        bboxes[:, [1, 3]] *= self.image_size[0]
+        bboxes[:, [2, 4]] *= self.image_size[1]
         return img, bboxes, rev_tensor, img_path
 
     def __len__(self) -> int:
