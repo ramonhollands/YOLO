@@ -104,15 +104,13 @@ def scale_segmentation(
         if "segmentation" in anno:
             seg_list = [item for sublist in anno["segmentation"] for item in sublist]
         elif "bbox" in anno:
-            seg_list = anno["bbox"]
-
-        # Temporary fix for bounding box coordinates
-        if len(seg_list) == 4:
-            scaled_seg_data = np.zeros((1, 4))
-            scaled_seg_data[0][0] = seg_list[0] / w
-            scaled_seg_data[0][1] = seg_list[1] / h
-            scaled_seg_data[0][2] = seg_list[2] / w
-            scaled_seg_data[0][3] = seg_list[3] / h
+            x,y,width,height = anno["bbox"]
+            seg_list = [
+                x, y,  # Top-left corner
+                x + width, height,  # Top-right corner
+                x + width, y + height,  # Bottom-right corner
+                x, y + height  # Bottom-left corner
+            ]
 
         scaled_seg_data = (
             np.array(seg_list).reshape(-1, 2) / [w, h]
