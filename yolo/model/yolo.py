@@ -132,14 +132,26 @@ class YOLO(nn.Module):
             preds_cls, preds_anc, preds_box = [], [], []
             for layer_output in output["Main"]:
                 pred_cls, pred_anc, pred_box = layer_output
-                preds_cls.append(pred_cls.permute(0, 2, 3, 1).reshape(pred_cls.shape[0], -1, pred_cls.shape[1]))
-                preds_anc.append(
-                    pred_anc.permute(0, 3, 4, 1, 2).reshape(pred_anc.shape[0], -1, pred_anc.shape[2], pred_anc.shape[1])
-                )
-                preds_box.append(pred_box.permute(0, 2, 3, 1).reshape(pred_box.shape[0], -1, pred_box.shape[1]))
+                
+                B, C, H, W = pred_cls.shape
+                pred_cls = pred_cls.contiguous().view(B, C, H * W).transpose(1, 2)
 
+                # B, C, H, W, A = pred_anc.shape
+                # pred_anc = pred_anc[0].contiguous().view(B, C, H * W * A).transpose(1, 2)
+
+                _, C, H, W, A = pred_anc.shape
+                pred_anc = pred_anc[0].contiguous().view(C, H * W * A).transpose(0, 1)
+
+                B, C, H, W = pred_box.shape
+                pred_box = pred_box.contiguous().view(B, C, H * W).transpose(1, 2)
+
+                preds_cls.append(pred_cls)
+                preds_anc.append(pred_anc)
+                preds_box.append(pred_box)
+
+            # Concatenation while ensuring the device remains consistent
             preds_cls = torch.concat(preds_cls, dim=1).to(x[0][0].device)
-            preds_anc = torch.concat(preds_anc, dim=1).to(x[0][0].device)
+            preds_anc = torch.concat(preds_anc, dim=0).to(x[0][0].device)
             preds_box = torch.concat(preds_box, dim=1).to(x[0][0].device)
 
             strides = self.get_strides(output["Main"], input_width)
@@ -149,8 +161,11 @@ class YOLO(nn.Module):
             pred_LTRB = preds_box * scaler.view(1, -1, 1)
             lt, rb = pred_LTRB.chunk(2, dim=-1)
             preds_box = torch.cat([anchor_grid - lt, anchor_grid + rb], dim=-1)
+            
+            normalize = 1.0 / 640
+            preds_box = preds_box * normalize
 
-            return preds_cls, preds_anc, preds_box
+            return preds_cls.sigmoid(), preds_anc, preds_box
 
         return output
 
@@ -226,6 +241,7 @@ class YOLO(nn.Module):
 def create_model(
     model_cfg: ModelConfig, weight_path: Union[bool, Path] = True, class_num: int = 80, export_mode: bool = False
 ) -> YOLO:
+    
     """Constructs and returns a model from a Dictionary configuration file.
 
     Args:

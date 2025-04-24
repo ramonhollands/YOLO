@@ -135,13 +135,25 @@ class FastModelLoader:
         from coremltools import models
 
         def coreml_forward(self, x: Tensor):
+            from PIL import Image
+            import numpy as np
             x = x.cpu().numpy()
+            # print(x.shape)
+            # # remove first dimension
+            x = x[0]
+            x = np.transpose(x, (1, 2, 0))
+            x = (x * 255).clip(0, 255).astype(np.uint8)
+            pil_image = Image.fromarray(x)
             model_outputs = []
-            predictions = self.predict({"x": x})
+            predictions = self.predict({"x": pil_image})
+            # predictions = self.predict({"x": x})
 
             output_keys = ["preds_cls", "preds_anc", "preds_box"]
             for key in output_keys:
-                model_outputs.append(torch.from_numpy(predictions[key]).to(device))
+                if key == "preds_anc":
+                    model_outputs.append([])
+                else:
+                    model_outputs.append(torch.from_numpy(predictions[key]).to(device))
 
             return model_outputs
 

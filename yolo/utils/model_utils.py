@@ -180,8 +180,9 @@ class PostProcess:
             prediction = predict
 
         pred_class, _, pred_bbox = prediction[:3]
+        pred_bbox = pred_bbox * 640
         pred_conf = prediction[3] if len(prediction) == 4 else None
-
+        
         if rev_tensor is not None:
             pred_bbox = (pred_bbox - rev_tensor[:, None, 1:]) / rev_tensor[:, 0:1, None]
         pred_bbox = bbox_nms(pred_class, pred_bbox, self.nms, pred_conf)

@@ -373,20 +373,22 @@ class Vec2Box:
         self.anchor_grid, self.scaler = anchor_grid.to(self.device), scaler.to(self.device)
 
     def __call__(self, predicts):
-        preds_cls, preds_anc, preds_box = [], [], []
+        preds_cls, preds_box = [], []
+        # preds_anc is niet nodig. Het werkt ook zonder.
+        # Check of het ook kan als we het model met export_mode aanroepen (en dan puur pytorch)
         for layer_output in predicts:
-            pred_cls, pred_anc, pred_box = layer_output
+            pred_cls, _, pred_box = layer_output
             preds_cls.append(rearrange(pred_cls, "B C h w -> B (h w) C"))
-            preds_anc.append(rearrange(pred_anc, "B A R h w -> B (h w) R A"))
+            # preds_anc.append(rearrange(pred_anc, "B A R h w -> B (h w) R A"))
             preds_box.append(rearrange(pred_box, "B X h w -> B (h w) X"))
         preds_cls = torch.concat(preds_cls, dim=1)
-        preds_anc = torch.concat(preds_anc, dim=1)
+        # preds_anc = torch.concat(preds_anc, dim=1)
         preds_box = torch.concat(preds_box, dim=1)
 
         pred_LTRB = preds_box * self.scaler.view(1, -1, 1)
         lt, rb = pred_LTRB.chunk(2, dim=-1)
         preds_box = torch.cat([self.anchor_grid - lt, self.anchor_grid + rb], dim=-1)
-        return preds_cls, preds_anc, preds_box
+        return preds_cls, preds_box
 
 
 class Anc2Box:
@@ -459,7 +461,7 @@ def create_converter(model_version: str = "v9-c", *args, **kwargs) -> Union[Anc2
 
 
 def bbox_nms(cls_dist: Tensor, bbox: Tensor, nms_cfg: NMSConfig, confidence: Optional[Tensor] = None):
-    cls_dist = cls_dist.sigmoid() * (1 if confidence is None else confidence)
+    cls_dist = cls_dist * (1 if confidence is None else confidence)
 
     batch_idx, valid_grid, valid_cls = torch.where(cls_dist > nms_cfg.min_confidence)
     valid_con = cls_dist[batch_idx, valid_grid, valid_cls]

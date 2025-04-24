@@ -118,6 +118,9 @@ class MultiheadDetection(nn.Module):
     def __init__(self, in_channels: List[int], num_classes: int, **head_kwargs):
         super().__init__()
         DetectionHead = Detection
+        
+        print('in_channels', in_channels)
+        print('head_kwargs', head_kwargs)
 
         if head_kwargs.pop("version", None) == "v7":
             DetectionHead = IDetection
@@ -144,6 +147,8 @@ class Segmentation(nn.Module):
     def forward(self, x: Tensor) -> Tuple[Tensor]:
         x = self.mask_conv(x)
         return x
+
+
 
 
 class MultiheadSegmentation(nn.Module):
@@ -175,7 +180,7 @@ class Anchor2Vec(nn.Module):
         vector_x = anchor_x.softmax(dim=1)
         vector_x = self.anc2vec(vector_x)[:, 0]
         return anchor_x, vector_x
-
+    
 
 # ----------- Classification Class ----------- #
 class Classification(nn.Module):
@@ -322,7 +327,8 @@ class RepNCSPELAN(nn.Module):
 
         if process_channels is None:
             process_channels = part_channels // 2
-
+        self.in_channels = in_channels
+        self.out_channels = out_channels
         self.conv1 = Conv(in_channels, part_channels, 1, **kwargs)
         self.conv2 = nn.Sequential(
             RepNCSP(part_channels // 2, process_channels, neck_args=csp_neck_args, **csp_args),
@@ -339,6 +345,9 @@ class RepNCSPELAN(nn.Module):
         x3 = self.conv2(x2)
         x4 = self.conv3(x3)
         x5 = self.conv4(torch.cat([x1, x2, x3, x4], dim=1))
+        print('self.in_channels', self.in_channels)
+        print('self.out_channels', self.out_channels)
+        print('x5.shape', x5.shape)
         return x5
 
 

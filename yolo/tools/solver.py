@@ -142,11 +142,15 @@ class InferenceModel(BaseModel):
 
     def predict_step(self, batch, batch_idx):
         images, rev_tensor, origin_frame = batch
+        
         if hasattr(self, "fast_model") and self.fast_model:
             predictions = self.fast_model(images)
         else:
             predictions = self(images)
+
+        
         predicts = self.post_process(predictions, rev_tensor=rev_tensor)
+        # print(f"Prediction shape: {predictions}")
         img = draw_bboxes(origin_frame, predicts, idx2label=self.cfg.dataset.class_list)
         if getattr(self.predict_loader, "is_stream", None):
             fps = self._display_stream(img)
@@ -168,14 +172,13 @@ class ExportModel(BaseModel):
             cfg.model.model.auxiliary = {}
 
         export_mode = False
-        format = cfg.task.format
+        self.format = cfg.task.format
         # TODO check if we can use export mode for all formats
         if self.format == "coreml":
             export_mode = True
 
         super().__init__(cfg, export_mode=export_mode)
         self.cfg = cfg
-        self.format = format
         self.model_exporter = ModelExporter(self.cfg, self.model, format=self.format)
 
     def export(self):
