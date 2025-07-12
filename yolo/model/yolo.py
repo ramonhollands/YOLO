@@ -128,44 +128,59 @@ class YOLO(nn.Module):
             index += 1
 
         if self.export_mode:
-
-            preds_cls, preds_anc, preds_box = [], [], []
-            for layer_output in output["Main"]:
-                pred_cls, pred_anc, pred_box = layer_output
-                
-                B, C, H, W = pred_cls.shape
-                pred_cls = pred_cls.contiguous().view(B, C, H * W).transpose(1, 2)
-
-                # B, C, H, W, A = pred_anc.shape
-                # pred_anc = pred_anc[0].contiguous().view(B, C, H * W * A).transpose(1, 2)
-
-                _, C, H, W, A = pred_anc.shape
-                pred_anc = pred_anc[0].contiguous().view(C, H * W * A).transpose(0, 1)
-
-                B, C, H, W = pred_box.shape
-                pred_box = pred_box.contiguous().view(B, C, H * W).transpose(1, 2)
-
-                preds_cls.append(pred_cls)
-                preds_anc.append(pred_anc)
-                preds_box.append(pred_box)
-
-            # Concatenation while ensuring the device remains consistent
-            preds_cls = torch.concat(preds_cls, dim=1).to(x[0][0].device)
-            preds_anc = torch.concat(preds_anc, dim=0).to(x[0][0].device)
-            preds_box = torch.concat(preds_box, dim=1).to(x[0][0].device)
-
+            
             strides = self.get_strides(output["Main"], input_width)
             anchor_grid, scaler = self.generate_anchors([input_width, input_height], strides)  #
             anchor_grid = anchor_grid.to(x[0][0].device)
             scaler = scaler.to(x[0][0].device)
-            pred_LTRB = preds_box * scaler.view(1, -1, 1)
-            lt, rb = pred_LTRB.chunk(2, dim=-1)
-            preds_box = torch.cat([anchor_grid - lt, anchor_grid + rb], dim=-1)
-            
             normalize = 1.0 / 640
-            preds_box = preds_box * normalize
 
-            return preds_cls.sigmoid(), preds_anc, preds_box
+            preds_cls, preds_box = [], []
+            anchor_idx = 0
+            for layer_output in output["Main"]:
+                # pred_cls, pred_anc, pred_obj = layer_output
+                # pred_anc is the reason things are not working fully on ANE
+                # removing it from the graph breaks the model, things get numeric unstable
+                # clamping sort of helps but not precise enough
+                # pred_box = torch.clamp(pred_box, min=0, max=5.0)
+                pred_cls, _, pred_box = layer_output
+                
+                B, C, H, W = pred_cls.shape
+                pred_cls = pred_cls.contiguous().view(B, C, H * W).transpose(1, 2)
+
+                B, C, H, W = pred_box.shape
+                pred_box = pred_box.contiguous().view(B, C, H * W).transpose(1, 2)
+                
+                pred_box = torch.clamp(pred_box, min=0, max=5.0)
+
+                preds_cls.append(pred_cls)       
+            
+                num_anchors = H * W
+
+                # Get matching anchors and scalers
+                anchors_layer = anchor_grid[anchor_idx: anchor_idx + num_anchors]
+                scaler_layer = scaler[anchor_idx: anchor_idx + num_anchors]
+
+                # Decode box
+                pred_LTRB = pred_box * scaler_layer.view(1, -1, 1)
+                lt, rb = pred_LTRB.chunk(2, dim=-1)
+                pred_box_decoded = torch.cat([anchors_layer - lt, anchors_layer + rb], dim=-1)
+                pred_box_decoded = pred_box_decoded * normalize
+                pred_box_decoded = torch.clamp(pred_box_decoded, min=0, max=1.0)
+
+                preds_box.append(pred_box_decoded)
+
+                anchor_idx += num_anchors
+
+            # Concatenation while ensuring the device remains consistent
+            preds_cls = torch.concat(preds_cls, dim=1).to(x[0][0].device)
+            preds_box = torch.concat(preds_box, dim=1).to(x[0][0].device)
+
+            
+            return preds_cls.sigmoid(), preds_box
+        
+
+
 
         return output
 

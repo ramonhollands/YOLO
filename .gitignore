@@ -148,3 +148,8 @@ node_modules/
 
 # Not ignore image for demo
 !demo/images/*/*.png
+
+v9-s_fp16.mlpackage
+venv10
+venv8
+v9-s_fp32.mlpackage

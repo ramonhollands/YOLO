@@ -92,7 +92,7 @@ class ModelExporter:
         # Convert to Core ML program using the Unified Conversion API.
         logging.getLogger("coremltools").disabled = True
 
-        self.output_names: List[str] = ["preds_cls", "preds_anc", "preds_box"]
+        self.output_names: List[str] = ["preds_cls", "preds_box"]
         # self.output_names: List[str] = [f"output_{i}" for i in range(6)]
         ct_model = ct.convert(
             exported_program,
@@ -100,6 +100,12 @@ class ModelExporter:
             outputs=[ct.TensorType(name=name) for name in self.output_names], convert_to="mlprogram",
             compute_precision=ct.precision.FLOAT16,
         )
+
+        # int8 quantization
+        # import coremltools.optimize.coreml as cto
+        # op_config = cto.OpPalettizerConfig(mode="kmeans", nbits=8, weight_threshold=512)
+        # config = cto.OptimizationConfig(global_config=op_config)
+        # ct_model = cto.palettize_weights(ct_model, config=config)
         
         ct_model_32 = ct.convert(
             exported_program,
@@ -144,6 +150,10 @@ class ModelExporter:
                 continue
             output16 = out_16[name]
             output32 = out_32[name]
+            print("Maximum value in output16:", name, output16.max())
+            print("Maximum value in output32:", name, output32.max())
+            print("Minimum value in output16:", name, output16.min())
+            print("Minimum value in output32:", name, output32.min())
             diff = np.abs(output16 - output32)
             print(f"{name}: mean abs diff = {diff.mean():.6f}, max diff = {diff.max():.6f}")
 
