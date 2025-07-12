@@ -1,0 +1,2 @@
+sh run_export_coreml.sh
+sh run_inference_coreml.sh

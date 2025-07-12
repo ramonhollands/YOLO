@@ -1,0 +1,1 @@
+python yolo/lazy.py task=export name=ExportCoreml model=v9-s task.format=coreml

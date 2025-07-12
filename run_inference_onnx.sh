@@ -1,0 +1,1 @@
+python yolo/lazy.py task=inference name=Onnx device=coreml model=v9-s task.nms.min_confidence=0.1 task.fast_inference=onnx use_wandb=False task.data.source=demo/images/inference/hannaklaas.jpg

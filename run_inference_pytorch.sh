@@ -1,0 +1,1 @@
+python yolo/lazy.py task=inference name=Pytorch device=cpu model=v9-s task.nms.min_confidence=0.1 task.fast_inference=coreml2 use_wandb=False task.data.source=demo/images/inference/
