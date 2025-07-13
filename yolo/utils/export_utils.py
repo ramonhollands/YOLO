@@ -94,23 +94,23 @@ class ModelExporter:
         self.output_names: List[str] = ["preds_cls", "preds_box"]
         
         # # float16 quantization
-        # Different export method, but it doesn't work.
+        
+        # Original export method -> +/- 20ms runtime
         # ct_model_fp16 = ct.convert(
-        #     exported_program,
-        #     convert_to="neuralnetwork",
-        #     outputs=[ct.TensorType(name=name) for name in self.output_names],
-        #     inputs=[ct.ImageType("x", shape=example_inputs[0].shape, scale=1/255., bias=[0,0,0])],
-        # )
-        # ct_model_fp16 = ct.models.neural_network.quantization_utils.quantize_weights(ct_model_fp16, 16, mode="linear")
+        #         exported_program,
+        #         inputs=[ct.ImageType("x", shape=example_inputs[0].shape, scale=1/255., bias=[0,0,0])],
+        #         outputs=[ct.TensorType(name=name) for name in self.output_names], convert_to="mlprogram",
+        #         compute_precision=ct.precision.FLOAT16,
+        #     )
 
-
+        # Different export method -> +/- 9ms runtime
         ct_model_fp16 = ct.convert(
-                exported_program,
-                inputs=[ct.ImageType("x", shape=example_inputs[0].shape, scale=1/255., bias=[0,0,0])],
-                outputs=[ct.TensorType(name=name) for name in self.output_names], convert_to="mlprogram",
-                compute_precision=ct.precision.FLOAT16,
-            )
-
+            exported_program,
+            convert_to="neuralnetwork",
+            outputs=[ct.TensorType(name=name) for name in self.output_names],
+            inputs=[ct.ImageType("x", shape=example_inputs[0].shape, scale=1/255., bias=[0,0,0])],
+        )
+        ct_model_fp16 = ct.models.neural_network.quantization_utils.quantize_weights(ct_model_fp16, 16, mode="linear")
         
         # int8 quantization
         ct_model_int8 = ct.convert(
