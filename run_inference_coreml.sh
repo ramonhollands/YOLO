@@ -1,2 +1,3 @@
 python yolo/lazy.py task=inference name=Coreml32 device=coreml model=v9-s weight=v9-s_fp32 task.nms.min_confidence=0.1 task.fast_inference=coreml use_wandb=False task.data.source=demo/images/inference/
 python yolo/lazy.py task=inference name=Coreml16 device=coreml model=v9-s weight=v9-s_fp16 task.nms.min_confidence=0.1 task.fast_inference=coreml use_wandb=False task.data.source=demo/images/inference/
+python yolo/lazy.py task=inference name=Coreml8 device=coreml model=v9-s weight=v9-s_int8 task.nms.min_confidence=0.1 task.fast_inference=coreml use_wandb=False task.data.source=demo/images/inference/

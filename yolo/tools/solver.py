@@ -118,10 +118,12 @@ class InferenceModel(BaseModel):
             cfg.model.model.auxiliary = {}
 
         export_mode = False
+        self.apply_sigmoid = True
         fast_inference = cfg.task.fast_inference
         # TODO check if we can use export mode for all formats
         if fast_inference == "coreml":
             export_mode = True
+            self.apply_sigmoid = False
 
         super().__init__(cfg, export_mode=export_mode)
         self.cfg = cfg
@@ -135,22 +137,18 @@ class InferenceModel(BaseModel):
         if self.cfg.task.fast_inference:
             self.fast_model = FastModelLoader(self.cfg, self.model).load_model(self.device)
 
-        self.post_process = PostProcess(self.vec2box, self.cfg.task.nms)
+        self.post_process = PostProcess(self.vec2box, self.cfg.task.nms, apply_sigmoid=self.apply_sigmoid)
 
     def predict_dataloader(self):
         return self.predict_loader
 
     def predict_step(self, batch, batch_idx):
         images, rev_tensor, origin_frame = batch
-        
         if hasattr(self, "fast_model") and self.fast_model:
             predictions = self.fast_model(images)
         else:
             predictions = self(images)
-
-        
         predicts = self.post_process(predictions, rev_tensor=rev_tensor)
-        # print(f"Prediction shape: {predictions}")
         img = draw_bboxes(origin_frame, predicts, idx2label=self.cfg.dataset.class_list)
         if getattr(self.predict_loader, "is_stream", None):
             fps = self._display_stream(img)

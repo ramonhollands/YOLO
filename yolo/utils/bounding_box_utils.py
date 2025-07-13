@@ -460,7 +460,9 @@ def create_converter(model_version: str = "v9-c", *args, **kwargs) -> Union[Anc2
     return converter
 
 
-def bbox_nms(cls_dist: Tensor, bbox: Tensor, nms_cfg: NMSConfig, confidence: Optional[Tensor] = None):
+def bbox_nms(cls_dist: Tensor, bbox: Tensor, nms_cfg: NMSConfig, confidence: Optional[Tensor] = None, apply_sigmoid: bool = True):
+    if apply_sigmoid:
+        cls_dist = cls_dist.sigmoid()
     cls_dist = cls_dist * (1 if confidence is None else confidence)
 
     batch_idx, valid_grid, valid_cls = torch.where(cls_dist > nms_cfg.min_confidence)

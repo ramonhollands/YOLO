@@ -147,17 +147,15 @@ class YOLO(nn.Module):
                 
                 B, C, H, W = pred_cls.shape
                 pred_cls = pred_cls.contiguous().view(B, C, H * W).transpose(1, 2)
-
+                
+                preds_cls.append(pred_cls)     
+                
                 B, C, H, W = pred_box.shape
                 pred_box = pred_box.contiguous().view(B, C, H * W).transpose(1, 2)
-                
                 pred_box = torch.clamp(pred_box, min=0, max=5.0)
 
-                preds_cls.append(pred_cls)       
-            
-                num_anchors = H * W
-
                 # Get matching anchors and scalers
+                num_anchors = H * W
                 anchors_layer = anchor_grid[anchor_idx: anchor_idx + num_anchors]
                 scaler_layer = scaler[anchor_idx: anchor_idx + num_anchors]
 
@@ -172,16 +170,12 @@ class YOLO(nn.Module):
 
                 anchor_idx += num_anchors
 
-            # Concatenation while ensuring the device remains consistent
             preds_cls = torch.concat(preds_cls, dim=1).to(x[0][0].device)
             preds_box = torch.concat(preds_box, dim=1).to(x[0][0].device)
 
-            
+            # Adding the sigmoid is needed to keep the model numeric stable for coreml export
             return preds_cls.sigmoid(), preds_box
         
-
-
-
         return output
 
     def get_out_channels(self, layer_type: str, layer_args: dict, output_dim: list, source: Union[int, list]):

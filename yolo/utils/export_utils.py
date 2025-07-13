@@ -82,7 +82,6 @@ class ModelExporter:
 
         self.model.eval()
         example_inputs = (torch.rand(1, 3, *self.cfg.image_size),)
-        # model = IOSDetectModel(self.model, example_inputs[0])
         exported_program = torch.export.export(self.model, example_inputs)
 
         import logging
@@ -93,20 +92,39 @@ class ModelExporter:
         logging.getLogger("coremltools").disabled = True
 
         self.output_names: List[str] = ["preds_cls", "preds_box"]
-        # self.output_names: List[str] = [f"output_{i}" for i in range(6)]
-        ct_model = ct.convert(
+        
+        # # float16 quantization
+        # Different export method, but it doesn't work.
+        # ct_model_fp16 = ct.convert(
+        #     exported_program,
+        #     convert_to="neuralnetwork",
+        #     outputs=[ct.TensorType(name=name) for name in self.output_names],
+        #     inputs=[ct.ImageType("x", shape=example_inputs[0].shape, scale=1/255., bias=[0,0,0])],
+        # )
+        # ct_model_fp16 = ct.models.neural_network.quantization_utils.quantize_weights(ct_model_fp16, 16, mode="linear")
+
+
+        ct_model_fp16 = ct.convert(
+                exported_program,
+                inputs=[ct.ImageType("x", shape=example_inputs[0].shape, scale=1/255., bias=[0,0,0])],
+                outputs=[ct.TensorType(name=name) for name in self.output_names], convert_to="mlprogram",
+                compute_precision=ct.precision.FLOAT16,
+            )
+
+        
+        # int8 quantization
+        ct_model_int8 = ct.convert(
             exported_program,
             inputs=[ct.ImageType("x", shape=example_inputs[0].shape, scale=1/255., bias=[0,0,0])],
             outputs=[ct.TensorType(name=name) for name in self.output_names], convert_to="mlprogram",
-            compute_precision=ct.precision.FLOAT16,
+            compute_precision=ct.precision.FLOAT32,
         )
+        import coremltools.optimize.coreml as cto
+        op_config = cto.OpPalettizerConfig(mode="kmeans", nbits=8, weight_threshold=512)
+        config = cto.OptimizationConfig(global_config=op_config)
+        ct_model_int8 = cto.palettize_weights(ct_model_int8, config=config)
 
-        # int8 quantization
-        # import coremltools.optimize.coreml as cto
-        # op_config = cto.OpPalettizerConfig(mode="kmeans", nbits=8, weight_threshold=512)
-        # config = cto.OptimizationConfig(global_config=op_config)
-        # ct_model = cto.palettize_weights(ct_model, config=config)
-        
+        # float32 output
         ct_model_32 = ct.convert(
             exported_program,
             inputs=[ct.ImageType("x", shape=example_inputs[0].shape, scale=1/255., bias=[0,0,0])],
@@ -115,10 +133,17 @@ class ModelExporter:
         )
         
         # ct_model = ct.models.neural_network.quantization_utils.quantize_weights(ct_model, 16, 'linear')
-        fp_16_model_path = self.model_path.replace(".mlpackage", "_fp16.mlpackage")
+        int_8_model_path = self.model_path.replace(".mlpackage", "_int8.mlpackage")
+        ct_model_int8.save(int_8_model_path)
+
         fp_32_model_path = self.model_path.replace(".mlpackage", "_fp32.mlpackage")
-        ct_model.save(fp_16_model_path)
         ct_model_32.save(fp_32_model_path)
+        
+        fp_16_model_path = self.model_path.replace(".mlpackage", "_fp16.mlpackage")
+        ct_model_fp16.save(fp_16_model_path)
+
+        
+        
         logger.info(f":white_check_mark: Model exported to coreml format {self.model_path}")
         
         # run both model and check the output
@@ -156,26 +181,3 @@ class ModelExporter:
             print("Minimum value in output32:", name, output32.min())
             diff = np.abs(output16 - output32)
             print(f"{name}: mean abs diff = {diff.mean():.6f}, max diff = {diff.max():.6f}")
-
-        
-
-
-# import torch
-# class IOSDetectModel(torch.nn.Module):
-#     """Wrap an Ultralytics YOLO model for Apple iOS CoreML export."""
-
-#     def __init__(self, model, im):
-#         """Initialize the IOSDetectModel class with a YOLO model and example image."""
-#         super().__init__()
-#         _, _, h, w = im.shape  # batch, channel, height, width
-#         self.model = model
-#         self.nc = 80  # number of classes
-#         if w == h:
-#             self.normalize = 1.0 / w  # scalar
-#         else:
-#             self.normalize = torch.tensor([1.0 / w, 1.0 / h, 1.0 / w, 1.0 / h])  # broadcast (slower, smaller)
-
-#     def forward(self, x):
-#         """Normalize predictions of object detection model with input size-dependent factors."""
-#         xywh, cls = self.model(x)[0].transpose(0, 1).split((4, self.nc), 1)
-#         return cls, xywh * self.normalize  # confidence (3780, 80), coordinates (3780, 4)

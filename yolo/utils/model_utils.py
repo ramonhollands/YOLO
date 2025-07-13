@@ -164,9 +164,10 @@ class PostProcess:
     scale back the prediction and do nms for pred_bbox
     """
 
-    def __init__(self, converter: Union[Vec2Box, Anc2Box], nms_cfg: NMSConfig) -> None:
+    def __init__(self, converter: Union[Vec2Box, Anc2Box], nms_cfg: NMSConfig, apply_sigmoid: bool = True) -> None:
         self.converter = converter
         self.nms = nms_cfg
+        self.apply_sigmoid = apply_sigmoid
 
     def __call__(
         self, predict, rev_tensor: Optional[Tensor] = None, image_size: Optional[List[int]] = None
@@ -185,7 +186,7 @@ class PostProcess:
         
         if rev_tensor is not None:
             pred_bbox = (pred_bbox - rev_tensor[:, None, 1:]) / rev_tensor[:, 0:1, None]
-        pred_bbox = bbox_nms(pred_class, pred_bbox, self.nms, pred_conf)
+        pred_bbox = bbox_nms(pred_class, pred_bbox, self.nms, pred_conf, apply_sigmoid=self.apply_sigmoid)
         return pred_bbox
 
 

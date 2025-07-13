@@ -138,15 +138,14 @@ class FastModelLoader:
             from PIL import Image
             import numpy as np
             x = x.cpu().numpy()
-            # print(x.shape)
-            # # remove first dimension
             x = x[0]
             x = np.transpose(x, (1, 2, 0))
             x = (x * 255).clip(0, 255).astype(np.uint8)
             pil_image = Image.fromarray(x)
             model_outputs = []
             predictions = self.predict({"x": pil_image})
-            # predictions = self.predict({"x": x})
+
+            print('predictions.keys()',predictions.keys())
 
             output_keys = ["preds_cls", "preds_anc", "preds_box"]
             for key in output_keys:
@@ -165,6 +164,7 @@ class FastModelLoader:
         try:
             model_coreml = models.MLModel(self.model_path)
             logger.info(":rocket: Using CoreML as MODEL frameworks!")
+            logger.info(f"Model path: {self.model_path}")
         except FileNotFoundError:
             logger.warning(f"🈳 No found model weight at {self.model_path}")
             return None
